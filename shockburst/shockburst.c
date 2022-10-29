@@ -14,6 +14,8 @@ LOG_MODULE_REGISTER(shockburst, CONFIG_ESB_PRX_APP_LOG_LEVEL);
 static uint8_t tx_payload_buffer[CONFIG_ESB_MAX_PAYLOAD_LENGTH];
 static uint8_t rx_payload_buffer[CONFIG_ESB_MAX_PAYLOAD_LENGTH];
 
+static uint8_t payload_length;
+
 /**
  * @brief Function for swapping/mirroring bits in a byte.
  *
@@ -107,6 +109,8 @@ void shockburst_init() {
                        (PACKET_BASE_ADDRESS_LENGTH   << RADIO_PCNF1_BALEN_Pos)   |
                        (PACKET_STATIC_LENGTH         << RADIO_PCNF1_STATLEN_Pos) |
                        (PACKET_PAYLOAD_MAXSIZE       << RADIO_PCNF1_MAXLEN_Pos); //lint !e845 "The right argument to operator '|' is certain to be 0"
+
+    payload_length = PACKET_STATIC_LENGTH;
 
     // CRC Config
     NRF_RADIO->CRCCNF = (RADIO_CRCCNF_LEN_Two << RADIO_CRCCNF_LEN_Pos); // Activate CRC and use two checksum bits
@@ -218,13 +222,13 @@ int shockburst_write_tx_payload(uint8_t* payload, uint8_t size) {
     return 0;
 }
 
-int shockburst_read_rx_payload() {
+int shockburst_read_rx_payload(uint8_t* payload) {
     int result = 0;
 
-    // Clear buffer
+    // TODO: Clear buffer
     NRF_RADIO->PACKETPTR = (uint32_t)rx_payload_buffer;
 
-    LOG_DBG("Enable radio in TX mode...");
+    LOG_DBG("Enable radio in RX mode...");
 
     NRF_RADIO->EVENTS_READY = 0U; // Clear EVENTS_READY register
     NRF_RADIO->TASKS_RXEN = 1U; // Enable Radio in TX mode
@@ -257,15 +261,8 @@ int shockburst_read_rx_payload() {
         // wait for Radio to be disabled
     }
 
-    LOG_INF("%d", rx_payload_buffer[0]);
-    LOG_INF("%d",rx_payload_buffer[1]);
-    LOG_INF("%d",rx_payload_buffer[2]);
-    LOG_INF("%d",rx_payload_buffer[3]);
-    LOG_INF("%d",rx_payload_buffer[4]);
-    LOG_INF("%d",rx_payload_buffer[5]);
-    LOG_INF("%d",rx_payload_buffer[6]);
-    LOG_INF("%d",rx_payload_buffer[7]);
-
+    // Copy rx_payload_buffer to payload argument
+    memcpy(payload, rx_payload_buffer, payload_length);
 
     return result;
 }
@@ -277,6 +274,8 @@ int shockburst_set_payload_length(uint32_t length) {
            (length << RADIO_PCNF1_MAXLEN_Pos);
     NRF_RADIO->PCNF1 = reg;
 
+    payload_length = length;
+
     return 0;
 }
 
@@ -287,4 +286,87 @@ int shockburst_set_address_base_length(uint32_t addr_length) {
     NRF_RADIO->PCNF1 = reg;
 
     return 0;
+}
+
+int shockburst_activate_fast_rampup() {
+    uint32_t reg = NRF_RADIO->MODECNF0;
+    reg |= 1UL;
+    NRF_RADIO->MODECNF0 = reg;
+
+    return 0;
+}
+
+int shockburst_deactivate_fast_rampup() {
+    uint32_t reg = NRF_RADIO->MODECNF0;
+    reg &= 0xFFFFFFFEUL;
+    NRF_RADIO->MODECNF0 = reg;
+
+    return 0;
+}
+
+int shockburst_rx_start_listening() {
+    int result = 0;
+
+    // TODO: Clear buffer
+    NRF_RADIO->PACKETPTR = (uint32_t)rx_payload_buffer;
+
+    LOG_DBG("Enable radio in RX mode...");
+
+    NRF_RADIO->EVENTS_READY = 0U; // Clear EVENTS_READY register
+    NRF_RADIO->TASKS_RXEN = 1U; // Enable Radio in TX mode
+
+    while (NRF_RADIO->EVENTS_READY == 0U) {
+        // wait for EVENTS_READY a.k.a. Radio has ramped up and is ready to be started
+    }
+
+    LOG_DBG("Start radio and listening for packets...");
+
+    NRF_RADIO->EVENTS_END = 0U; // Clear EVENTS_END
+    NRF_RADIO->TASKS_START = 1U; // Start Radio a.k.a. listening for receiving packets
+}
+
+
+int shockburst_rx_stop_listening() {
+    //
+    if (NRF_RADIO->STATE == RADIO_STATE_STATE_Rx) {
+        NRF_RADIO->TASKS_STOP = 1U;
+    }
+
+    NRF_RADIO->EVENTS_DISABLED = 0U; // Clear EVENTS_DISABLED register
+    NRF_RADIO->TASKS_DISABLE = 1U; // Disable Radio
+
+    while (NRF_RADIO->EVENTS_DISABLED == 0U) {
+        // wait for Radio to be disabled
+    }
+}
+
+int shockburst_rx_available() {
+    uint8_t result = NRF_RADIO->EVENTS_END;
+
+    if (result != 0) {
+        return 1;
+    }
+
+    return 0;
+}
+
+int shockburst_rx_read(uint8_t* payload) {
+    int result = 0;
+
+    // Check if CRC of received packet is okay
+    if (NRF_RADIO->CRCSTATUS == 0U) {
+        // Error
+        // TODO: Better error code
+        result = -1;
+    }
+    
+    NRF_RADIO->EVENTS_END; // Clear END
+
+    // Copy rx_payload_buffer to payload argument
+    memcpy(payload, rx_payload_buffer, payload_length);
+
+    // Start listening to packets again
+    NRF_RADIO->TASKS_START = 1U;
+
+    return result;
 }

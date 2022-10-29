@@ -74,13 +74,33 @@ enum shockburst_radio_state shockburst_get_radio_state();
 
 int shockburst_set_tx_address(uint32_t addr);
 
+// === Blocking API ===
+
 int shockburst_write_tx_payload(uint8_t* payload, uint8_t length);
 
-int shockburst_read_rx_payload();
+int shockburst_read_rx_payload(uint8_t* payload);
+
+// ===
 
 int shockburst_set_payload_length(uint32_t length);
 
 int shockburst_set_address_base_length(uint32_t addr_length);
+
+int shockburst_activate_fast_rampup();
+
+int shockburst_deactivate_fast_rampup();
+
+// === Polling API == 
+
+int shockburst_rx_start_listening();
+
+int shockburst_rx_stop_listening();
+
+int shockburst_rx_available();
+
+int shockburst_rx_read(uint8_t* payload);
+
+// === 
 
 #ifdef __cplusplus
 }
