@@ -76,7 +76,7 @@ static uint32_t bytewise_bitswap(uint32_t inp)
 void shockburst_init() {
     /// Radio config
     /// Default settings
-    NRF_RADIO->TXPOWER   = (RADIO_TXPOWER_TXPOWER_0dBm << RADIO_TXPOWER_TXPOWER_Pos); // 0dBm
+    NRF_RADIO->TXPOWER   = (RADIO_TXPOWER_TXPOWER_Neg4dBm << RADIO_TXPOWER_TXPOWER_Pos); // 0dBm
     NRF_RADIO->FREQUENCY = 7UL; // Frequency bin 7, 2407MHz
     NRF_RADIO->MODE      = (RADIO_MODE_MODE_Nrf_1Mbit << RADIO_MODE_MODE_Pos); // 1Mmbps
 
