@@ -1,7 +1,8 @@
 #include "shockburst.h"
 
 #include <logging/log.h>
-#include "errno.h"
+#include <errno.h>
+#include <irq.h>
 
 
 LOG_MODULE_REGISTER(shockburst, CONFIG_ESB_PRX_APP_LOG_LEVEL);
@@ -11,8 +12,11 @@ LOG_MODULE_REGISTER(shockburst, CONFIG_ESB_PRX_APP_LOG_LEVEL);
 #define PACKET_S0_FIELD_SIZE      (0UL)  /**< Packet S0 field size in bits. */
 #define PACKET_LENGTH_FIELD_SIZE  (0UL)  /**< Packet length field size in bits. */
 
-static uint8_t tx_payload_buffer[CONFIG_ESB_MAX_PAYLOAD_LENGTH];
-static uint8_t rx_payload_buffer[CONFIG_ESB_MAX_PAYLOAD_LENGTH];
+// Event handler function pointer
+static void (*event_handler)(enum shockburst_event);
+
+static uint8_t tx_payload_buffer[32];
+static uint8_t rx_payload_buffer[32];
 
 static uint8_t payload_length;
 
@@ -198,11 +202,16 @@ int shockburst_write_tx_payload(uint8_t* payload, uint8_t size) {
     NRF_RADIO->PACKETPTR = (uint32_t)tx_payload_buffer;
 
     NRF_RADIO->EVENTS_READY = 0U; // Clear EVENTS_READY register
-    NRF_RADIO->TASKS_TXEN   = 1; // Enable Radio in TX mode
+
+    // If radio is disabled then start it up
+    if (NRF_RADIO->STATE == RADIO_STATE_STATE_Disabled) {
+        NRF_RADIO->TASKS_TXEN   = 1; // Enable Radio in TX mode
+    }
 
     while (NRF_RADIO->EVENTS_READY == 0U){
-        // wait for EVENTS_READY a.k.a. Radio has ramped up and is ready to be started
+            // wait for EVENTS_READY a.k.a. Radio has ramped up in TX mode and is ready to be started
     }
+
     NRF_RADIO->EVENTS_END  = 0U; // Clear EVENTS_END
     NRF_RADIO->TASKS_START = 1U; // Start Radio a.k.a. send packet
 
@@ -229,12 +238,16 @@ int shockburst_read_rx_payload(uint8_t* payload) {
     LOG_DBG("Enable radio in RX mode...");
 
     NRF_RADIO->EVENTS_READY = 0U; // Clear EVENTS_READY register
-    NRF_RADIO->TASKS_RXEN = 1U; // Enable Radio in TX mode
 
-    while (NRF_RADIO->EVENTS_READY == 0U) {
-        // wait for EVENTS_READY a.k.a. Radio has ramped up and is ready to be started
+    // If radio is disabled then start it up
+    if (NRF_RADIO->STATE == RADIO_STATE_STATE_Disabled) {
+        NRF_RADIO->TASKS_RXEN = 1U; // Enable Radio in RX mode
     }
 
+    while (NRF_RADIO->EVENTS_READY == 0U) {
+            // wait for EVENTS_READY a.k.a. Radio has ramped up in RX mode and is ready to be started
+    }
+    
     LOG_DBG("Start radio and listening for packets...");
 
     NRF_RADIO->EVENTS_END = 0U; // Clear EVENTS_END
@@ -310,6 +323,9 @@ int shockburst_rx_start_listening() {
 
     LOG_DBG("Enable radio in RX mode...");
 
+    // Disable Interrupt for EVENTS_END (Packet send or received)
+    NRF_RADIO->INTENCLR = RADIO_INTENCLR_END_Msk;
+
     NRF_RADIO->EVENTS_READY = 0U; // Clear EVENTS_READY register
     NRF_RADIO->TASKS_RXEN = 1U; // Enable Radio in TX mode
 
@@ -325,6 +341,7 @@ int shockburst_rx_start_listening() {
 
 
 int shockburst_rx_stop_listening() {
+    int result = 0;
     //
     if (NRF_RADIO->STATE == RADIO_STATE_STATE_Rx) {
         NRF_RADIO->TASKS_STOP = 1U;
@@ -336,6 +353,8 @@ int shockburst_rx_stop_listening() {
     while (NRF_RADIO->EVENTS_DISABLED == 0U) {
         // wait for Radio to be disabled
     }
+
+    return result;
 }
 
 int shockburst_rx_available() {
@@ -358,7 +377,7 @@ int shockburst_rx_read(uint8_t* payload) {
         result = -1;
     }
     
-    NRF_RADIO->EVENTS_END; // Clear END
+    NRF_RADIO->EVENTS_END = 0U; // Clear END
 
     // Copy rx_payload_buffer to payload argument
     memcpy(payload, rx_payload_buffer, payload_length);
@@ -367,4 +386,32 @@ int shockburst_rx_read(uint8_t* payload) {
     NRF_RADIO->TASKS_START = 1U;
 
     return result;
+}
+
+int shockburst_rx_start_listening_interrupt(void (*handler)(enum shockburst_event)) {
+    int result = 0;
+
+    event_handler = handler;
+
+    // Enable Interrupt for EVENTS_END (Packet send or received)
+    NRF_RADIO->INTENSET = RADIO_INTENSET_END_Msk;
+
+    return result;
+}
+
+static void radio_irq_handler(void) {
+    if (NRF_RADIO->EVENTS_END && (NRF_RADIO->INTENSET & RADIO_INTENSET_END_Msk)) {
+		NRF_RADIO->EVENTS_END = 0; // Clear EVENTS_END
+		
+        event_handler(SHOCKBURST_EVENT_RX_RECEIVED);
+	}
+}
+
+ISR_DIRECT_DECLARE(RADIO_IRQHandler) {
+
+    radio_irq_handler();
+
+    ISR_DIRECT_PM();
+
+    return 1;
 }

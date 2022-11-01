@@ -50,6 +50,10 @@ enum shockburst_crc {
     SHOCKBURST_CRC_DISABLE = RADIO_CRCCNF_LEN_Disabled
 };
 
+enum shockburst_event {
+	SHOCKBURST_EVENT_RX_RECEIVED,
+};
+
 enum shockburst_radio_state {
     SHOCKBURST_RADIO_STATE_DISABLED = RADIO_STATE_STATE_Disabled,
 };
@@ -100,7 +104,15 @@ int shockburst_rx_available();
 
 int shockburst_rx_read(uint8_t* payload);
 
-// === 
+// ===
+
+// Interrupt API
+
+int shockburst_rx_start_listening_interrupt(void (*handler)(enum shockburst_event));
+
+int shockburst_rx_stop_listening_interrupt();
+
+// ===
 
 #ifdef __cplusplus
 }
