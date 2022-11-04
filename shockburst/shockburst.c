@@ -225,6 +225,10 @@ int shockburst_set_tx_address(uint32_t addr) {
     return 0;
 }
 
+int shockburst_set_rx_addresses(uint8_t activations) {
+    NRF_RADIO->RXADDRESSES = activations;
+}
+
 int shockburst_write_tx_payload(uint8_t* payload, uint8_t size) {
     memcpy(&tx_payload_buffer[0], payload, size);
     NRF_RADIO->PACKETPTR = (uint32_t)tx_payload_buffer;
