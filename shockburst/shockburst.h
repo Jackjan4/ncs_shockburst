@@ -11,6 +11,10 @@ extern "C" {
 #define PACKET_STATIC_LENGTH        (8UL)                   //!< Packet static length in bytes
 #define PACKET_PAYLOAD_MAXSIZE      (PACKET_STATIC_LENGTH)  //!< Packet payload maximum size in bytes
 
+// Error Codes
+#define EPERWS 150
+#define ECHK 151
+
 enum shockburst_bitrate {
     SHOCKBURST_BITRATE_250KBPS = RADIO_MODE_MODE_Nrf_250Kbit,
     SHOCKBURST_BITRATE_1MBPS = RADIO_MODE_MODE_Nrf_1Mbit,

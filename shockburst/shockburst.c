@@ -16,8 +16,8 @@ LOG_MODULE_REGISTER(shockburst, CONFIG_ESB_PRX_APP_LOG_LEVEL);
 static void (*event_handler)(enum shockburst_event);
 
 // TODO: No fixed max payload size
-static uint8_t tx_payload_buffer[32];
-static uint8_t rx_payload_buffer[32];
+static uint8_t tx_payload_buffer[CONFIG_SHOCKBURST_MAX_PAYLOAD_LENGTH];
+static uint8_t rx_payload_buffer[CONFIG_SHOCKBURST_MAX_PAYLOAD_LENGTH];
 
 static uint8_t payload_length;
 
@@ -245,8 +245,7 @@ int shockburst_write_tx_payload(uint8_t* payload, uint8_t size) {
     }
 
     if (NRF_RADIO->STATE != RADIO_STATE_STATE_TxIdle) {
-        // TODO: Error code
-        return -1;
+        return -EPERWS;
     }
 
     NRF_RADIO->EVENTS_END  = 0U; // Clear EVENTS_END
@@ -286,8 +285,7 @@ int shockburst_read_rx_payload(uint8_t* payload) {
     }
 
     if (NRF_RADIO->STATE != RADIO_STATE_STATE_RxIdle) {
-        // TODO: Error code
-        return -1;
+        return -EPERWS;
     }
     
     LOG_DBG("Start radio and listening for packets...");
@@ -304,8 +302,7 @@ int shockburst_read_rx_payload(uint8_t* payload) {
     // Check if CRC of received packet is okay
     if (NRF_RADIO->CRCSTATUS == 0U) {
         // Error
-        // TODO: Better error code
-        result = -1;
+        result = -ECHK;
     }
     NRF_RADIO->EVENTS_DISABLED = 0U; // Clear EVENTS_DISABLED register
     NRF_RADIO->TASKS_DISABLE = 1U; // Disable Radio
@@ -380,8 +377,7 @@ int shockburst_rx_start_listening() {
     }
 
     if (NRF_RADIO->STATE != RADIO_STATE_STATE_RxIdle) {
-        // TODO: Error code
-        result = -1;
+        result = -EPERWS;
         return result;
     }
 
@@ -431,8 +427,7 @@ int shockburst_rx_read(uint8_t* payload) {
     // Check if CRC of received packet is okay
     if (NRF_RADIO->CRCSTATUS == 0U) {
         // Error
-        // TODO: Better error code
-        result = -1;
+        result = -ECHK;
     }
     
     NRF_RADIO->EVENTS_END = 0U; // Clear END
@@ -471,8 +466,7 @@ int shockburst_rx_start_listening_interrupt(void (*handler)(enum shockburst_even
     }
 
     if (NRF_RADIO->STATE != RADIO_STATE_STATE_RxIdle) {
-        // TODO: Error code
-        result = -1;
+        result = -EPERWS;
         return result;
     }
 
