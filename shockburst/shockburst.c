@@ -233,7 +233,7 @@ int shockburst_write_tx_payload(uint8_t* payload, uint8_t size) {
 
     // If radio is disabled then start it up
     if (NRF_RADIO->STATE == RADIO_STATE_STATE_Disabled || NRF_RADIO->STATE == RADIO_STATE_STATE_RxIdle) {
-        NRF_RADIO->TASKS_TXEN   = 1; // Enable Radio in TX mode
+        NRF_RADIO->TASKS_TXEN = 1; // Enable Radio in TX mode
 
         while (NRF_RADIO->EVENTS_READY == 0U) {
             // wait for EVENTS_READY a.k.a. Radio has ramped up in TX mode and is ready to be started
@@ -395,6 +395,10 @@ int shockburst_rx_stop_listening() {
     //
     if (NRF_RADIO->STATE == RADIO_STATE_STATE_Rx) {
         NRF_RADIO->TASKS_STOP = 1U;
+
+        while(NRF_RADIO->STATE != RADIO_STATE_STATE_RxIdle) {
+            // Wait until ready is in RXIDLE
+        }
     }
 
     NRF_RADIO->EVENTS_DISABLED = 0U; // Clear EVENTS_DISABLED register
@@ -472,6 +476,30 @@ int shockburst_rx_start_listening_interrupt(void (*handler)(enum shockburst_even
 
     NRF_RADIO->EVENTS_END = 0U; // Clear EVENTS_END
     NRF_RADIO->TASKS_START = 1U; // Start Radio a.k.a. listening for receiving packets
+
+    return result;
+}
+
+int shockburst_rx_stop_listening_interrupt() {
+    int result = 0;
+    //
+    if (NRF_RADIO->STATE == RADIO_STATE_STATE_Rx) {
+        NRF_RADIO->TASKS_STOP = 1U;
+
+        while(NRF_RADIO->STATE != RADIO_STATE_STATE_RxIdle) {
+        // Wait until ready is in RXIDLE
+        }
+    }
+
+    // Disable Interrupt for EVENTS_END (Packet send or received)
+    NRF_RADIO->INTENCLR = RADIO_INTENCLR_END_Msk;
+
+    NRF_RADIO->EVENTS_DISABLED = 0U; // Clear EVENTS_DISABLED register
+    NRF_RADIO->TASKS_DISABLE = 1U; // Disable Radio
+
+    while (NRF_RADIO->EVENTS_DISABLED == 0U) {
+        // wait for Radio to be disabled
+    }
 
     return result;
 }

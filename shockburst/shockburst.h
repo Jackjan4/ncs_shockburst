@@ -76,7 +76,19 @@ void shockburst_set_crc(enum shockburst_crc crc);
 
 enum shockburst_radio_state shockburst_get_radio_state();
 
+
+
+/// @brief Sets which address (0-7) should be used for used for TX operations
+/// @param addr The address that should be used for TX. 0-7
+/// @return Error code or 0 if successful
 int shockburst_set_tx_address(uint32_t addr);
+
+
+/// @brief Bit-sets which addresses should be activated for RX reception
+/// @param activations - Bit pattern for which address should be enabled. LSB = Address0
+/// @return Error code or 0 if sucessful
+int shockburst_set_rx_addresses(uint8_t activations);
+
 
 // === Blocking API ===
 
