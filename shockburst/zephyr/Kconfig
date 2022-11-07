@@ -5,7 +5,7 @@
 #
 
 menuconfig SHOCKBURST
-	bool "ShockBurst (not Enhanced)"
+	bool "Enable support for ShockBurst (not Enhanced)"
 	default n
 	help
 	  Enable Shockburst functionality.
