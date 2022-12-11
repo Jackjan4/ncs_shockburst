@@ -5,7 +5,7 @@
 #include <irq.h>
 
 
-LOG_MODULE_REGISTER(shockburst, CONFIG_ESB_PRX_APP_LOG_LEVEL);
+LOG_MODULE_REGISTER(shockburst);
 
 /* These are set to zero as ShockBurst packets don't have corresponding fields. */
 #define PACKET_S1_FIELD_SIZE      (0UL)  /**< Packet S1 field size in bits. */
@@ -34,7 +34,6 @@ static void radio_irq_handler(void) {
 }
 
 ISR_DIRECT_DECLARE(RADIO_SHOCKBURST_IRQHandler) {
-
     radio_irq_handler();
 
     ISR_DIRECT_PM();
@@ -229,6 +228,14 @@ int shockburst_set_rx_addresses(uint8_t activations) {
     NRF_RADIO->RXADDRESSES = activations;
 }
 
+int shockburst_clear_interrupt_end() {
+    int err = 0;
+    
+    NRF_RADIO->INTENCLR = RADIO_INTENCLR_END_Msk;
+
+    return err;
+}
+
 int shockburst_write_tx_payload(uint8_t* payload, uint8_t size) {
     memcpy(&tx_payload_buffer[0], payload, size);
     NRF_RADIO->PACKETPTR = (uint32_t)tx_payload_buffer;
@@ -265,13 +272,44 @@ int shockburst_write_tx_payload(uint8_t* payload, uint8_t size) {
     return 0;
 }
 
+
+
+int shockburst_write_tx_payload_pause(uint8_t* payload, uint8_t size) {
+    int err = 0;
+
+    memcpy(&tx_payload_buffer[0], payload, size);
+    NRF_RADIO->PACKETPTR = (uint32_t)tx_payload_buffer;
+
+    NRF_RADIO->EVENTS_READY = 0U; // Clear EVENTS_READY register
+
+    // If radio is disabled then start it up
+    if (NRF_RADIO->STATE == RADIO_STATE_STATE_Disabled || NRF_RADIO->STATE == RADIO_STATE_STATE_RxIdle) {
+        NRF_RADIO->TASKS_TXEN = 1; // Enable Radio in TX mode
+
+        while (NRF_RADIO->EVENTS_READY == 0U) {
+            // wait for EVENTS_READY a.k.a. Radio has ramped up in TX mode and is ready to be started
+        }
+    }
+
+    if (NRF_RADIO->STATE != RADIO_STATE_STATE_TxIdle) {
+         return -EPERWS;
+    }
+
+    NRF_RADIO->EVENTS_END  = 0U; // Clear EVENTS_END
+    NRF_RADIO->TASKS_START = 1U; // Start Radio a.k.a. send packet
+
+    while (NRF_RADIO->EVENTS_END == 0U) {
+        // wait for EVENTS_END a.k.a. packet to be finished se
+    }
+
+    return err;
+}
+
 int shockburst_read_rx_payload(uint8_t* payload) {
     int result = 0;
 
     // TODO: Clear buffer
     NRF_RADIO->PACKETPTR = (uint32_t)rx_payload_buffer;
-
-    LOG_DBG("Enable radio in RX mode...");
 
     NRF_RADIO->EVENTS_READY = 0U; // Clear EVENTS_READY register
 
@@ -287,8 +325,6 @@ int shockburst_read_rx_payload(uint8_t* payload) {
     if (NRF_RADIO->STATE != RADIO_STATE_STATE_RxIdle) {
         return -EPERWS;
     }
-    
-    LOG_DBG("Start radio and listening for packets...");
 
     NRF_RADIO->EVENTS_END = 0U; // Clear EVENTS_END
     NRF_RADIO->TASKS_START = 1U; // Start Radio a.k.a. listening for receiving packets
@@ -296,8 +332,6 @@ int shockburst_read_rx_payload(uint8_t* payload) {
     while (NRF_RADIO->EVENTS_END == 0U) {
         // wait for EVENTS_END a.k.a. packet received
     }
-
-    LOG_DBG("Packet received");
 
     // Check if CRC of received packet is okay
     if (NRF_RADIO->CRCSTATUS == 0U) {
@@ -360,15 +394,12 @@ int shockburst_rx_start_listening() {
     // TODO: Clear buffer
     NRF_RADIO->PACKETPTR = (uint32_t)rx_payload_buffer;
 
-    LOG_DBG("Enable radio in RX mode...");
-
     // Disable Interrupt for EVENTS_END (Packet send or received)
     NRF_RADIO->INTENCLR = RADIO_INTENCLR_END_Msk;
-
-    NRF_RADIO->EVENTS_READY = 0U; // Clear EVENTS_READY register
     
     // If radio is disabled then start it up
     if (NRF_RADIO->STATE == RADIO_STATE_STATE_Disabled || NRF_RADIO->STATE == RADIO_STATE_STATE_TxIdle) {
+        NRF_RADIO->EVENTS_READY = 0U; // Clear EVENTS_READY register
         NRF_RADIO->TASKS_RXEN = 1U; // Enable Radio in RX mode
 
         while (NRF_RADIO->EVENTS_READY == 0U) {
@@ -380,8 +411,6 @@ int shockburst_rx_start_listening() {
         result = -EPERWS;
         return result;
     }
-
-    LOG_DBG("Start radio and listening for packets...");
 
     NRF_RADIO->EVENTS_END = 0U; // Clear EVENTS_END
     NRF_RADIO->TASKS_START = 1U; // Start Radio a.k.a. listening for receiving packets
@@ -424,16 +453,25 @@ int shockburst_rx_available() {
 int shockburst_rx_read(uint8_t* payload) {
     int result = 0;
 
+    NRF_RADIO->EVENTS_END = 0U; // Clear END
+
+    if (NRF_RADIO->STATE != RADIO_STATE_STATE_RxIdle) {
+        result = -EBUSY;
+        LOG_ERR("Radio war im falschen State: %d", NRF_RADIO->STATE);
+        return result;
+    }
+
+    // Copy rx_payload_buffer to payload argument
+    memcpy(payload, rx_payload_buffer, payload_length);
+
     // Check if CRC of received packet is okay
     if (NRF_RADIO->CRCSTATUS == 0U) {
         // Error
         result = -ECHK;
     }
-    
-    NRF_RADIO->EVENTS_END = 0U; // Clear END
 
-    // Copy rx_payload_buffer to payload argument
-    memcpy(payload, rx_payload_buffer, payload_length);
+    // THE RECEIVED MESSAGE IS STILL COPIED INTO PAYLOAD, EVEN IF THE CRC FAILED!
+    // THE USER CAN THUS DECIDE IF HE WANTS TO DISCARD IT
 
     // Start listening to packets again
     NRF_RADIO->TASKS_START = 1U;
@@ -441,23 +479,50 @@ int shockburst_rx_read(uint8_t* payload) {
     return result;
 }
 
+int shockburst_rx_read_idle(uint8_t* payload) {
+    int result = 0;
+
+    NRF_RADIO->EVENTS_END = 0U; // Clear END
+
+    // We do not start listening to packets again; thus the radio stays in RX_IDLE
+    if (NRF_RADIO->STATE != RADIO_STATE_STATE_RxIdle) {
+        result = -EPERWS;
+        LOG_ERR("Radio war im falschen State: %d", NRF_RADIO->STATE);
+        return result;
+    }
+
+    // Copy rx_payload_buffer to payload argument
+    memcpy(payload, rx_payload_buffer, payload_length);
+
+    // Check if CRC of received packet is okay
+    if (NRF_RADIO->CRCSTATUS == 0U) {
+        // Error
+        result = -ECHK;
+        return result;
+    }
+
+    // THE RECEIVED MESSAGE IS STILL COPIED INTO PAYLOAD, EVEN IF THE CRC FAILED!
+    // THE USER CAN THUS DECIDE IF HE WANTS TO DISCARD IT
+
+    return result;
+}
+
 int shockburst_rx_start_listening_interrupt(void (*handler)(enum shockburst_event)) {
     int result = 0;
+
+    // Check if radio is already listening
+    if (NRF_RADIO->STATE == RADIO_STATE_STATE_Rx) {
+        return result;
+    }
 
     event_handler = handler;
 
     // TODO: Clear buffer
     NRF_RADIO->PACKETPTR = (uint32_t)rx_payload_buffer;
-
-    // Enable Interrupt for EVENTS_END (Packet send or received)
-    NRF_RADIO->INTENSET = RADIO_INTENSET_END_Msk;
-
-    LOG_DBG("Enable radio in RX mode...");
-
-    NRF_RADIO->EVENTS_READY = 0U; // Clear EVENTS_READY register
     
     // If radio is disabled then start it up
     if (NRF_RADIO->STATE == RADIO_STATE_STATE_Disabled || NRF_RADIO->STATE == RADIO_STATE_STATE_TxIdle) {
+        NRF_RADIO->EVENTS_READY = 0U; // Clear EVENTS_READY register
         NRF_RADIO->TASKS_RXEN = 1U; // Enable Radio in RX mode
 
         while (NRF_RADIO->EVENTS_READY == 0U) {
@@ -470,7 +535,8 @@ int shockburst_rx_start_listening_interrupt(void (*handler)(enum shockburst_even
         return result;
     }
 
-    LOG_DBG("Start radio and listening for packets...");
+    // Enable Interrupt for EVENTS_END (Packet send or received)
+    NRF_RADIO->INTENSET = RADIO_INTENSET_END_Msk;
 
     NRF_RADIO->EVENTS_END = 0U; // Clear EVENTS_END
     NRF_RADIO->TASKS_START = 1U; // Start Radio a.k.a. listening for receiving packets
@@ -480,6 +546,11 @@ int shockburst_rx_start_listening_interrupt(void (*handler)(enum shockburst_even
 
 int shockburst_rx_stop_listening_interrupt() {
     int result = 0;
+
+    if (NRF_RADIO->STATE == RADIO_STATE_STATE_Disabled) {
+        return result;
+    }
+
     //
     if (NRF_RADIO->STATE == RADIO_STATE_STATE_Rx) {
         NRF_RADIO->TASKS_STOP = 1U;
@@ -498,6 +569,28 @@ int shockburst_rx_stop_listening_interrupt() {
     while (NRF_RADIO->EVENTS_DISABLED == 0U) {
         // wait for Radio to be disabled
     }
+
+    return result;
+}
+
+int shockburst_rx_pause_listening_interrupt() {
+    int result = 0;
+
+    if (NRF_RADIO->STATE == RADIO_STATE_STATE_Disabled) {
+        return result;
+    }
+
+    //
+    if (NRF_RADIO->STATE == RADIO_STATE_STATE_Rx) {
+        NRF_RADIO->TASKS_STOP = 1U;
+
+        while(NRF_RADIO->STATE != RADIO_STATE_STATE_RxIdle) {
+        // Wait until ready is in RXIDLE
+        }
+    }
+
+    // Disable Interrupt for EVENTS_END (Packet send or received)
+    NRF_RADIO->INTENCLR = RADIO_INTENCLR_END_Msk;
 
     return result;
 }

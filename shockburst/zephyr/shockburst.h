@@ -12,8 +12,8 @@ extern "C" {
 #define PACKET_PAYLOAD_MAXSIZE      (PACKET_STATIC_LENGTH)  //!< Packet payload maximum size in bytes
 
 // Error Codes
-#define EPERWS 150
-#define ECHK 151
+#define EPERWS 150 // Radio in wrong state
+#define ECHK 151 // CRC code wrong
 
 enum shockburst_bitrate {
     SHOCKBURST_BITRATE_250KBPS = RADIO_MODE_MODE_Nrf_250Kbit,
@@ -83,7 +83,7 @@ enum shockburst_radio_state shockburst_get_radio_state();
 
 
 /// @brief Sets which address (0-7) should be used for used for TX operations
-/// @param addr The address that should be used for TX. 0-7
+/// @param addr The address that should be used for TX. A number between 0 to 7 (inclusive) 
 /// @return Error code or 0 if successful
 int shockburst_set_tx_address(uint32_t addr);
 
@@ -93,15 +93,6 @@ int shockburst_set_tx_address(uint32_t addr);
 /// @return Error code or 0 if sucessful
 int shockburst_set_rx_addresses(uint8_t activations);
 
-
-// === Blocking API ===
-
-int shockburst_write_tx_payload(uint8_t* payload, uint8_t length);
-
-int shockburst_read_rx_payload(uint8_t* payload);
-
-// ===
-
 int shockburst_set_payload_length(uint32_t length);
 
 int shockburst_set_address_base_length(uint32_t addr_length);
@@ -109,6 +100,20 @@ int shockburst_set_address_base_length(uint32_t addr_length);
 int shockburst_activate_fast_rampup();
 
 int shockburst_deactivate_fast_rampup();
+
+int shockburst_clear_interrupt_end();
+
+// === Blocking API ===
+
+int shockburst_write_tx_payload(uint8_t* payload, uint8_t length);
+
+int shockburst_write_tx_payload_pause(uint8_t* payload, uint8_t length);
+
+int shockburst_read_rx_payload(uint8_t* payload);
+
+// ===
+
+
 
 // === Polling API == 
 
@@ -120,13 +125,19 @@ int shockburst_rx_available();
 
 int shockburst_rx_read(uint8_t* payload);
 
+int shockburst_rx_read_idle(uint8_t* payload);
+
 // ===
+
+
 
 // Interrupt API
 
 int shockburst_rx_start_listening_interrupt(void (*handler)(enum shockburst_event));
 
 int shockburst_rx_stop_listening_interrupt();
+
+int shockburst_rx_pause_listening_interrupt();
 
 // ===
 
