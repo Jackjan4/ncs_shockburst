@@ -211,7 +211,9 @@ void shockburst_set_crc(enum shockburst_crc crc) {
 }
 
 enum shockburst_radio_state shockburst_get_radio_state() {
+    enum shockburst_radio_state result = SHOCKBURST_RADIO_STATE_DISABLED;
 
+    return result;
 }
 
 int shockburst_set_tx_address(uint32_t addr) {
@@ -224,7 +226,7 @@ int shockburst_set_tx_address(uint32_t addr) {
     return 0;
 }
 
-int shockburst_set_rx_addresses(uint8_t activations) {
+void shockburst_set_rx_addresses(uint8_t activations) {
     NRF_RADIO->RXADDRESSES = activations;
 }
 
@@ -308,7 +310,6 @@ int shockburst_write_tx_payload_pause(uint8_t* payload, uint8_t size) {
 int shockburst_read_rx_payload(uint8_t* payload) {
     int result = 0;
 
-    // TODO: Clear buffer
     NRF_RADIO->PACKETPTR = (uint32_t)rx_payload_buffer;
 
     NRF_RADIO->EVENTS_READY = 0U; // Clear EVENTS_READY register
@@ -391,7 +392,6 @@ int shockburst_deactivate_fast_rampup() {
 int shockburst_rx_start_listening() {
     int result = 0;
 
-    // TODO: Clear buffer
     NRF_RADIO->PACKETPTR = (uint32_t)rx_payload_buffer;
 
     // Disable Interrupt for EVENTS_END (Packet send or received)
@@ -517,7 +517,6 @@ int shockburst_rx_start_listening_interrupt(void (*handler)(enum shockburst_even
 
     event_handler = handler;
 
-    // TODO: Clear buffer
     NRF_RADIO->PACKETPTR = (uint32_t)rx_payload_buffer;
     
     // If radio is disabled then start it up
